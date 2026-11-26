@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: cliente-webhook
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5434/loja}
+    username: ${DB_USERNAME:loja}
+    # Sem default fora do profile local: a aplicação não sobe sem a variável.
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+  flyway:
+    locations: classpath:db/migration
+  jackson:
+    time-zone: UTC
+    default-property-inclusion: non_null
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  port: ${SERVER_PORT:8081}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+cliente:
+  webhook:
+    # Segredo HMAC combinado com a plataforma de pagamento. Obrigatório, mínimo de 32 caracteres.
+    secret: ${CLIENTE_WEBHOOK_SECRET}
+    tolerance: 300s
+    max-body-size: 64KB
+  simulation:
+    # Endpoints para simular a loja fora do ar. Ligado só no profile local.
+    enabled: false

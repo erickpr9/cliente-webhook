@@ -1,0 +1,429 @@
+{
+  "info": {
+    "name": "Cliente Webhook - Loja",
+    "description": "API da loja que recebe os avisos de pagamento da plataforma (projeto `cliente-webhook`, porta 8081).\n\nUse junto com a collection **Webhook Study - Payment Confirmation**: lá você cria o pedido e envia o webhook do provedor; aqui você vê o aviso chegar na loja e o pedido ser liberado para envio.\n\nNão precisa de environment próprio: as variáveis da collection já apontam para a loja local. Pode manter o environment **Webhook Study - Local** selecionado.\n\n1. Depois de confirmar um pagamento na plataforma, envie **1. Loja › Avisos recebidos**: ele guarda o `orderId` do aviso mais recente.\n2. Envie **1. Loja › Consultar pedido**: o pedido fica `READY_TO_SHIP`.\n3. Use **2. Simulação de falha** para ver a plataforma tentar de novo quando a loja falha.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "lojaBaseUrl",
+      "value": "http://localhost:8081",
+      "description": "URL da loja local."
+    },
+    {
+      "key": "lojaWebhookSecret",
+      "value": "local-dev-only-client-secret-0123456789abc",
+      "description": "Segredo HMAC combinado com a plataforma (desenvolvimento local)."
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "description": "Pedido consultado; preenchido por Avisos recebidos."
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Loja",
+      "item": [
+        {
+          "name": "Avisos recebidos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lista retornada (200)', () => pm.response.to.have.status(200));",
+                  "const notifications = pm.response.json();",
+                  "if (notifications.length > 0) {",
+                  "    pm.collectionVariables.set('orderId', notifications[0].orderId);",
+                  "    console.log('orderId = ' + notifications[0].orderId + ' (' + notifications[0].outcome + ')');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Avisos que chegaram da plataforma, mais recentes primeiro, com o resultado (`APPLIED` ou `IGNORED`) e o motivo. O `orderId` do primeiro fica salvo para **Consultar pedido**.",
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{lojaBaseUrl}}/notifications?limit=20",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "notifications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Consultar pedido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pedido encontrado (200)', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Situação do pedido na loja. `readyToShip: true` significa que a expedição pode separar e enviar.",
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{lojaBaseUrl}}/orders/{{orderId}}",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "orders",
+                "{{orderId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Simulação de falha",
+      "description": "Muda como a loja responde aos avisos, para ver a garantia de entrega da plataforma. Acompanhe pela plataforma em **3. Admin › Listar notificações (entregas à loja)**. Lembre de voltar ao normal no fim.",
+      "item": [
+        {
+          "name": "Ver modo atual",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{lojaBaseUrl}}/simulation/failure-mode",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "simulation",
+                "failure-mode"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loja fora do ar (503)",
+          "request": {
+            "description": "A loja responde 503. A plataforma agenda nova tentativa com backoff (`RETRY_SCHEDULED`) e entrega quando a loja volta.",
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"UNAVAILABLE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/simulation/failure-mode",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "simulation",
+                "failure-mode"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loja lenta (timeout)",
+          "request": {
+            "description": "A loja demora 10s, mais que o timeout de 5s da plataforma, mas processa o aviso. A plataforma não recebe a resposta e reenvia; a loja reconhece a reentrega como duplicada.",
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"SLOW\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/simulation/failure-mode",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "simulation",
+                "failure-mode"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Loja recusando (410)",
+          "request": {
+            "description": "A loja responde 410. É uma recusa definitiva: a plataforma desiste na hora e a notificação vai para `DEAD`.",
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"REJECT\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/simulation/failure-mode",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "simulation",
+                "failure-mode"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Voltar ao normal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Modo NONE', () => pm.expect(pm.response.json().mode).to.eql('NONE'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"NONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/simulation/failure-mode",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "simulation",
+                "failure-mode"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Aviso manual (como a plataforma)",
+      "description": "Testa a loja sozinha, sem a plataforma: o pre-request script desta pasta gera o id do aviso e assina com `lojaWebhookSecret`, como a plataforma faria.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Assina o aviso como a plataforma faria: HMAC-SHA256 de \"{timestamp}.{body}\".",
+              "pm.variables.set('notificationId', pm.variables.replaceIn('{{$guid}}'));",
+              "pm.variables.set('occurredAt', new Date().toISOString());",
+              "const timestamp = Math.floor(Date.now() / 1000).toString();",
+              "const body = pm.variables.replaceIn(pm.request.body.raw);",
+              "const signature = CryptoJS.HmacSHA256(timestamp + '.' + body, pm.variables.get('lojaWebhookSecret'))",
+              "    .toString(CryptoJS.enc.Hex);",
+              "pm.variables.set('timestamp', timestamp);",
+              "pm.variables.set('signature', 'sha256=' + signature);"
+            ]
+          }
+        }
+      ],
+      "item": [
+        {
+          "name": "Aviso de pagamento confirmado",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Aviso aceito (200)', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('orderId', 'ord_manual_001');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Pedido `ord_manual_001`. Na primeira vez o pedido é criado e liberado (`processed`); depois, o mesmo pedido já está liberado e o aviso é `ignored` (`ALREADY_APPLIED`).",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Event-Id",
+                "value": "{{notificationId}}"
+              },
+              {
+                "key": "X-Timestamp",
+                "value": "{{timestamp}}"
+              },
+              {
+                "key": "X-Signature",
+                "value": "{{signature}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{notificationId}}\",\n  \"type\": \"payment.confirmed\",\n  \"occurred_at\": \"{{occurredAt}}\",\n  \"data\": {\n    \"order_id\": \"ord_manual_001\",\n    \"payment_id\": \"pay_manual_001\",\n    \"amount\": 9990,\n    \"currency\": \"BRL\",\n    \"payment_status\": \"CONFIRMED\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/webhooks/payment-notifications",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "payment-notifications"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Aviso com assinatura inválida (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado (401)', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "description": "Assinatura fixa e inválida: a loja recusa com 401 e não grava nada. Sem essa verificação, qualquer um poderia liberar pedidos sem pagamento.",
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Event-Id",
+                "value": "{{notificationId}}"
+              },
+              {
+                "key": "X-Timestamp",
+                "value": "{{timestamp}}"
+              },
+              {
+                "key": "X-Signature",
+                "value": "sha256=0000000000000000000000000000000000000000000000000000000000000000"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{notificationId}}\",\n  \"type\": \"payment.confirmed\",\n  \"occurred_at\": \"{{occurredAt}}\",\n  \"data\": {\n    \"order_id\": \"ord_forged\",\n    \"payment_id\": \"pay_forged\",\n    \"amount\": 9990,\n    \"currency\": \"BRL\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{lojaBaseUrl}}/webhooks/payment-notifications",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "payment-notifications"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Observabilidade",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Loja UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{lojaBaseUrl}}/actuator/health",
+              "host": [
+                "{{lojaBaseUrl}}"
+              ],
+              "path": [
+                "actuator",
+                "health"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

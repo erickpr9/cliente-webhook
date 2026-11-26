@@ -1,0 +1,8 @@
+# Profile de testes. A conexão com o banco vem do Testcontainers (@ServiceConnection).
+spring:
+  datasource:
+    password: test
+
+cliente:
+  webhook:
+    secret: test-client-secret-with-at-least-32-characters

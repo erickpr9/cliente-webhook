@@ -1,0 +1,22 @@
+# Banco próprio da loja. Cada serviço tem o seu banco: a loja não lê o banco da plataforma de pagamento.
+# Porta 5434 no host, para não conflitar com o Postgres da plataforma (5433) nem com um Postgres local (5432).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: loja-postgres
+    environment:
+      POSTGRES_DB: loja
+      POSTGRES_USER: loja
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-loja}
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - loja-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loja -d loja"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  loja-pgdata:
