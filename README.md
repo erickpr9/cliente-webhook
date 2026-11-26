@@ -1,6 +1,6 @@
 # Cliente Webhook - Loja
 
-API de uma loja online que recebe os **avisos de pagamento** da plataforma de pagamento (projeto [`webhook`](../webhook)) e libera os pedidos para envio.
+API de uma loja online que recebe os **avisos de pagamento** da plataforma de pagamento (projeto [`webhook`](https://github.com/erickpr9/webhook)) e libera os pedidos para envio.
 
 É o outro lado do webhook. A plataforma recebe a confirmação do provedor (PIX, cartão) e **avisa a loja** com um POST assinado. A loja nunca precisa perguntar "esse pedido já foi pago?": ela só reage ao aviso.
 
